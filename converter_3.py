@@ -1,6 +1,9 @@
 from transitions import Machine
 import sys
 
+out_logs = []
+out_logs_tmprmd = []
+
 class StateMachine(object):
         # 状態の定義
     states = [
@@ -29,13 +32,13 @@ class StateMachine(object):
         # 状態を管理したいオブジェクトの元となるクラス
         # 遷移時やイベント発生時のアクションがある場合は、当クラスのmethodに記載する
     def make_created(self, event):
-        print(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Created' + ',' + event.args[0].split(',')[3])
+        out_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Created' + ',' + event.args[0].split(',')[3])
 
     def make_updated(self, event):
-        print(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Updated' + ',' + event.args[0].split(',')[3])
+        out_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Updated' + ',' + event.args[0].split(',')[3])
 
     def make_read(self, event):
-        print(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Read' + ',' + event.args[0].split(',')[3])
+        out_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Read' + ',' + event.args[0].split(',')[3])
 
 class MachineManager:
     def __init__(self):
@@ -65,7 +68,6 @@ class MachineManager:
                 machine.read(log)
             elif event == 'release':
                 machine.release(log)
-
 class LogConverter:
     def __init__(self, fd):
         self.fd = fd
@@ -75,11 +77,17 @@ class LogConverter:
         lines = self.fd.read().splitlines()
 
         for line in lines:
-            if line.split(',')[2] == 'create' or line.split(',')[2] == 'open':
+            event = line.split(',')[2]
+            if event == 'create' or event == 'open':
                 self.machine_mgr.make_machine(line)
 
-            if line.split(',')[2] == 'create' or line.split(',')[2] == 'open' or line.split(',')[2] == 'write' or line.split(',')[2] == 'read' or line.split(',')[2] == 'release':
+            if event == 'create' or event == 'open' or event == 'write' or event == 'read' or event == 'release':
                 self.machine_mgr.change_state(line)
+
+    def remove_tmpfile_log(self):
+        for line in out_logs:
+            if line.split(',')[3].split('/')[-1][0] != '.':
+                out_logs_tmprmd.append(line)
 
 def main():
     args = sys.argv
@@ -87,7 +95,12 @@ def main():
 
     log_converter = LogConverter(fd)
     log_converter.convert()
-#    log_converter.get_log()
+    print('out_logs: ')
+    print('\n'.join(out_logs))
+    log_converter.remove_tmpfile_log()
+    print('out_logs_tmprmd: ')
+    print('\n'.join(out_logs_tmprmd))
+
 
     fd.close()
 
