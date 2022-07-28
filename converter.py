@@ -91,7 +91,7 @@ class LogConverter:
 
 def main():
     args = sys.argv
-    fd = open(args[1], 'r')
+    fd = open(args[1], 'r', errors='replace')
 
     log_converter = LogConverter(fd)
     log_converter.convert()
