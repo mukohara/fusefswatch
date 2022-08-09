@@ -2,9 +2,7 @@ from transitions import Machine
 import sys
 import os
 
-out_logs = []
-out_logs_tmprmd = []
-copy_logs = []
+converted_logs = []
 
 class StateMachine(object):
         # 状態の定義
@@ -34,13 +32,13 @@ class StateMachine(object):
         # 状態を管理したいオブジェクトの元となるクラス
         # 遷移時やイベント発生時のアクションがある場合は、当クラスのmethodに記載する
     def make_created(self, event):
-        out_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Created' + ',' + event.args[0].split(',')[3])
+        converted_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Created' + ',' + event.args[0].split(',')[3])
 
     def make_updated(self, event):
-        out_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Updated' + ',' + event.args[0].split(',')[3])
+        converted_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Updated' + ',' + event.args[0].split(',')[3])
 
     def make_read(self, event):
-        out_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Read' + ',' + event.args[0].split(',')[3])
+        converted_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Read' + ',' + event.args[0].split(',')[3])
 
 class MachineManager:
     def __init__(self):
@@ -87,25 +85,38 @@ class LogConverter:
             if event == 'create' or event == 'open' or event == 'write' or event == 'read' or event == 'release':
                 self.machine_mgr.change_state(line)
 
-    def remove_tmpfile_log(self):
-        for line in out_logs:
+    def remove_tmpfile_log(self, logs):
+        procd_logs = []
+        for line in logs:
             if line.split(',')[3].split('/')[-1][0] != '.' and line.split(',')[3].split('/')[-1] != '4913':
-                out_logs_tmprmd.append(line)
+                procd_logs.append(line)
+        return procd_logs
 
-    def search_copy_log(self):
-        for idx, line in enumerate(out_logs_tmprmd):
-            prev_event = out_logs_tmprmd[idx-1].split(',')[2]
+    def search_copy_log(self, logs):
+        copy_logs = []
+        for idx, line in enumerate(logs):
+            prev_event = logs[idx-1].split(',')[2]
             event = line.split(',')[2]
-            prev_path = out_logs_tmprmd[idx-1].split(',')[3]
+            prev_path = logs[idx-1].split(',')[3]
             path = line.split(',')[3]
 
             if prev_event == 'Updated' and event == 'Read':
                 if os.path.getsize(prev_path) == os.path.getsize(path) and path != prev_path:
                     copy_logs.append(line.split(',')[0] + ',' + 'Copied' + ',' + 'from ' + path + ' to ' + prev_path)
+        return copy_logs
 
-    def fix_homedir_path(self):
-        for line in out_logs:
-            line.replace('mukohara.fuse-watch', 'mukohara')
+    def fix_homedir_path(self, logs):
+        procd_logs = []
+        for line in logs:
+            procd_logs.append(line.replace('mukohara.fuse-watch', 'mukohara'))
+        return procd_logs
+
+    def remove_script_log(self, logs):
+        procd_logs = []
+        for line in logs:
+            if line.split(',')[3].split('/')[-1] != 'fuse-watch.sh':
+                procd_logs.append(line)
+        return procd_logs
 
 def main():
     args = sys.argv
@@ -113,15 +124,16 @@ def main():
 
     log_converter = LogConverter(fd)
     log_converter.convert()
-    #print('out_logs: ')
-    #print('\n'.join(out_logs))
 
-    log_converter.remove_tmpfile_log()
-    #print('out_logs_tmprmd: ')
-    print('\n'.join(out_logs_tmprmd))
+    out_logs_tmprmd = log_converter.remove_tmpfile_log(converted_logs)
 
-    log_converter.search_copy_log()
-    #print('copy_logs: ')
+    logs_homedir_fixed = log_converter.fix_homedir_path(out_logs_tmprmd)
+    logs_scrlog_rmd = log_converter.remove_script_log(logs_homedir_fixed)
+    print('logs: ')
+    print('\n'.join(logs_scrlog_rmd))
+
+    copy_logs = log_converter.search_copy_log(logs_homedir_fixed)
+    print('copy_logs: ')
     print('\n'.join(copy_logs))
 
     fd.close()
