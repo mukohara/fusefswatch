@@ -1,8 +1,10 @@
 from transitions import Machine
 import sys
+import os
 
 out_logs = []
 out_logs_tmprmd = []
+copy_logs = []
 
 class StateMachine(object):
         # 状態の定義
@@ -68,6 +70,7 @@ class MachineManager:
                 machine.read(log)
             elif event == 'release':
                 machine.release(log)
+
 class LogConverter:
     def __init__(self, fd):
         self.fd = fd
@@ -86,8 +89,23 @@ class LogConverter:
 
     def remove_tmpfile_log(self):
         for line in out_logs:
-            if line.split(',')[3].split('/')[-1][0] != '.':
+            if line.split(',')[3].split('/')[-1][0] != '.' and line.split(',')[3].split('/')[-1] != '4913':
                 out_logs_tmprmd.append(line)
+
+    def search_copy_log(self):
+        for idx, line in enumerate(out_logs_tmprmd):
+            prev_event = out_logs_tmprmd[idx-1].split(',')[2]
+            event = line.split(',')[2]
+            prev_path = out_logs_tmprmd[idx-1].split(',')[3]
+            path = line.split(',')[3]
+
+            if prev_event == 'Updated' and event == 'Read':
+                if os.path.getsize(prev_path) == os.path.getsize(path) and path != prev_path:
+                    copy_logs.append(line.split(',')[0] + ',' + 'Copied' + ',' + 'from ' + path + ' to ' + prev_path)
+
+    def fix_homedir_path(self):
+        for line in out_logs:
+            line.replace('mukohara.fuse-watch', 'mukohara')
 
 def main():
     args = sys.argv
@@ -95,12 +113,16 @@ def main():
 
     log_converter = LogConverter(fd)
     log_converter.convert()
-    print('out_logs: ')
-    print('\n'.join(out_logs))
+    #print('out_logs: ')
+    #print('\n'.join(out_logs))
+
     log_converter.remove_tmpfile_log()
-    print('out_logs_tmprmd: ')
+    #print('out_logs_tmprmd: ')
     print('\n'.join(out_logs_tmprmd))
 
+    log_converter.search_copy_log()
+    #print('copy_logs: ')
+    print('\n'.join(copy_logs))
 
     fd.close()
 
