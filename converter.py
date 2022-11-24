@@ -12,6 +12,8 @@ class StateMachine(object):
         {'name': 'write', 'ignore_invalid_triggers': 'True'},
         {'name': 'read', 'ignore_invalid_triggers': 'True'},
         {'name': 'release', 'ignore_invalid_triggers': 'True'},
+        {'name': 'unlink', 'ignore_invalid_triggers': 'True'},
+        {'name': 'rename', 'ignore_invalid_triggers': 'True'},
     ]
 
     def __init__(self, log):
@@ -28,17 +30,31 @@ class StateMachine(object):
         self.machine.add_transition(trigger='release',     source='read',     dest='release',   after='make_read')
         self.machine.add_transition(trigger='create',      source='release',  dest='create')
         self.machine.add_transition(trigger='open',        source='release',  dest='open')
+        self.machine.add_transition(trigger='unlink',      source='unlink',   dest='unlink',    after='make_remove')
+        self.machine.add_transition(trigger='rename',      source='rename',   dest='rename',    after='make_rename_or_move')
 
         # 状態を管理したいオブジェクトの元となるクラス
         # 遷移時やイベント発生時のアクションがある場合は、当クラスのmethodに記載する
     def make_created(self, event):
-        converted_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Created' + ',' + event.args[0].split(',')[3])
+        converted_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Create' + ',' + event.args[0].split(',')[3])
 
     def make_updated(self, event):
-        converted_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Updated' + ',' + event.args[0].split(',')[3])
+        converted_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Update' + ',' + event.args[0].split(',')[3])
 
     def make_read(self, event):
         converted_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Read' + ',' + event.args[0].split(',')[3])
+
+    def make_remove(self, event):
+        converted_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Remove' + ',' + event.args[0].split(',')[3])
+
+    def make_rename_or_move(self, event):
+        src = event.args[0].split(',')[3]
+        dst = event.args[0].split(',')[4]
+
+        if len(src.split('/')) == len(dst.split('/')):
+            converted_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Rename' + ',' + src + ',' + dst)
+        else:
+            converted_logs.append(event.args[0].split(',')[0] + ',' + event.args[0].split(',')[1] + ',' + 'Move' + ',' + src + ',' + dst)
 
 class MachineManager:
     def __init__(self):
@@ -51,6 +67,8 @@ class MachineManager:
             machine = StateMachine(log)
             new_machine = {path:machine}
             self.machines.update(new_machine)
+            return 0;
+        return 1;
 
     def change_state(self, log):
         path = log.split(',')[3]
@@ -68,6 +86,13 @@ class MachineManager:
                 machine.read(log)
             elif event == 'release':
                 machine.release(log)
+                del self.machines[path]
+            elif event == 'unlink':
+                machine.unlink(log)
+                del self.machines[path]
+            elif event == 'rename':
+                machine.rename(log)
+                del self.machines[path]
 
 class LogConverter:
     def __init__(self, fd):
@@ -79,10 +104,16 @@ class LogConverter:
 
         for line in lines:
             event = line.split(',')[2]
-            if event == 'create' or event == 'open':
+            if event == 'create' or event == 'open' or event == 'rename':
+                ret = self.machine_mgr.make_machine(line)
+                if ret == 0: # if machine is generated
+                    pass
+                else:
+                    self.machine_mgr.change_state(line)
+            elif event == 'write' or event == 'read' or event == 'release' or event == 'rename':
+                self.machine_mgr.change_state(line)
+            elif event == 'unlink':
                 self.machine_mgr.make_machine(line)
-
-            if event == 'create' or event == 'open' or event == 'write' or event == 'read' or event == 'release':
                 self.machine_mgr.change_state(line)
 
     def remove_tmpfile_log(self, logs):
@@ -117,6 +148,14 @@ class LogConverter:
             if line.split(',')[3].split('/')[-1] != 'fuse-watch.sh':
                 procd_logs.append(line)
         return procd_logs
+
+    # def remove_duplication(self, logs):
+    #     procd_logs = []
+    #     for i, line in enumerate(logs):
+    #         if :
+    #             asd
+    #         else:
+    #             procd_logs.append(line)
 
 def main():
     args = sys.argv
